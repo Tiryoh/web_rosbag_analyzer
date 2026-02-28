@@ -27,4 +27,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=rosbag-analyzer
+          command: pages deploy dist --project-name=rosbag-analyzer --branch=${{ github.event_name == 'push' && 'main' || github.head_ref }}
