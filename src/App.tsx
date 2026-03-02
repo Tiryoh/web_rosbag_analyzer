@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Upload, Filter, Download, BarChart3 } from 'lucide-react';
+import { Upload, Filter, Download, BarChart3, Github } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import { SEVERITY_NAMES, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
 import {
@@ -957,6 +957,21 @@ function App() {
             )}
           </div>
         )}
+        {/* Footer */}
+        <footer className="mt-12 pb-6 text-center space-y-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Works offline — all processing runs locally in your browser.
+          </p>
+          <a
+            href="https://github.com/Tiryoh/web_rosbag_analyzer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            <Github className="w-4 h-4" />
+            View source on GitHub
+          </a>
+        </footer>
       </div>
     </div>
   );
