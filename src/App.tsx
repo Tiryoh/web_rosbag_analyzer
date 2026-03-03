@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Upload, Filter, Download, BarChart3 } from 'lucide-react';
+import { Upload, Filter, Download, BarChart3, Github } from 'lucide-react';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import { SEVERITY_NAMES, SEVERITY_COLORS, SEVERITY_BG_COLORS, DIAGNOSTIC_LEVEL_NAMES, DIAGNOSTIC_LEVEL_COLORS, DIAGNOSTIC_LEVEL_BG_COLORS } from './types';
 import {
@@ -12,6 +12,7 @@ import {
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
   downloadFile,
+  filterDiagnostics,
 } from './rosbagUtils';
 
 function App() {
@@ -175,30 +176,13 @@ function App() {
   const uniqueDiagNames = new Set(diagnostics.map(d => d.name));
 
   const applyDiagFilters = () => {
-    const filtered = diagnostics.filter(d => {
-      const conditions: boolean[] = [];
-
-      if (diagSelectedLevels.size > 0) {
-        conditions.push(diagSelectedLevels.has(d.level));
-      }
-      if (diagSelectedNames.size > 0) {
-        conditions.push(diagSelectedNames.has(d.name));
-      }
-      if (diagUseRegex && diagRegexPattern.trim()) {
-        try {
-          const regex = new RegExp(diagRegexPattern, 'i');
-          conditions.push(regex.test(d.message));
-        } catch { /* skip invalid regex */ }
-      } else if (!diagUseRegex && diagKeywords) {
-        const keywords = diagKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-        if (keywords.length > 0) {
-          const msgLower = d.message.toLowerCase();
-          conditions.push(keywords.some(kw => msgLower.includes(kw)));
-        }
-      }
-
-      if (conditions.length === 0) return true;
-      return diagFilterMode === 'AND' ? conditions.every(c => c) : conditions.some(c => c);
+    const filtered = filterDiagnostics(diagnostics, {
+      levels: diagSelectedLevels,
+      names: diagSelectedNames,
+      messageKeywords: diagUseRegex ? undefined : diagKeywords,
+      messageRegex: diagUseRegex ? diagRegexPattern : undefined,
+      filterMode: diagFilterMode,
+      useRegex: diagUseRegex,
     });
     setFilteredDiagnostics(filtered);
     setExpandedDiagRows(new Set());
@@ -957,6 +941,21 @@ function App() {
             )}
           </div>
         )}
+        {/* Footer */}
+        <footer className="mt-12 pb-6 text-center space-y-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Works offline — all processing runs locally in your browser.
+          </p>
+          <a
+            href="https://github.com/Tiryoh/web_rosbag_analyzer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            <Github className="w-4 h-4" />
+            View source on GitHub
+          </a>
+        </footer>
       </div>
     </div>
   );
