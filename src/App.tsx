@@ -246,9 +246,12 @@ function App() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
-            🎯 ROSbag Analyzer
-          </h1>
+          <div className="flex items-center gap-4 mb-2">
+            <img src="./logo.png" alt="ROSbag Analyzer" className="w-16 h-16" />
+            <h1 className="text-4xl font-bold text-gray-800 dark:text-white">
+              ROSbag Analyzer
+            </h1>
+          </div>
             <p className="text-gray-600 dark:text-gray-300">
             Browser-based tool for analyzing rosout/rosout_agg and diagnostics/diagnostics_agg - No installation required!<br />
             <span className="text-green-700 dark:text-green-400 font-semibold">
