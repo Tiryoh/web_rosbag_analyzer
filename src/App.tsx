@@ -245,19 +245,14 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row items-center gap-4 mb-2">
-            <img src="./logo.png" alt="ROSbag Analyzer" className="w-20 h-20 sm:w-16 sm:h-16" />
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 dark:text-white text-center sm:text-left">
-              ROSbag Analyzer
-            </h1>
-          </div>
-            <p className="text-gray-600 dark:text-gray-300">
+        <div className="mb-8 text-center">
+          <img src="./logo.png" alt="ROSbag Analyzer" className="mx-auto h-32 sm:h-40 mb-2" />
+          <p className="text-gray-600 dark:text-gray-300">
             Browser-based tool for analyzing rosout/rosout_agg and diagnostics/diagnostics_agg - No installation required!<br />
             <span className="text-green-700 dark:text-green-400 font-semibold">
               All processing is done locally in your browser, no data is sent externally.
             </span>
-            </p>
+          </p>
         </div>
 
         {/* File Upload */}
