@@ -1,7 +1,27 @@
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
 import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
+import initSqlJs from 'sql.js';
+import type { SqlJsStatic } from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
-import { DIAGNOSTIC_LEVEL_NAMES } from './types';
+import { DIAGNOSTIC_LEVEL_NAMES, SEVERITY_NAMES } from './types';
+
+type Timezone = 'local' | 'utc';
+
+let sqlJsPromise: Promise<SqlJsStatic> | null = null;
+const resolvedSqlWasmUrl =
+  typeof window === 'undefined'
+    ? new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url).pathname
+    : sqlWasmUrl;
+
+async function getSqlJs(): Promise<SqlJsStatic> {
+  if (!sqlJsPromise) {
+    sqlJsPromise = initSqlJs({
+      locateFile: () => resolvedSqlWasmUrl,
+    });
+  }
+  return sqlJsPromise;
+}
 
 export async function loadRosbagMessages(file: File): Promise<{
   messages: RosoutMessage[];
@@ -301,15 +321,7 @@ export function filterDiagnostics(
   });
 }
 
-const SEVERITY_NAMES: Record<number, string> = {
-  1: 'DEBUG',
-  2: 'INFO',
-  4: 'WARN',
-  8: 'ERROR',
-  16: 'FATAL',
-};
-
-function formatTimestamp(timestamp: number, timezone: 'local' | 'utc' = 'local'): string {
+function formatTimestamp(timestamp: number, timezone: Timezone = 'local'): string {
   const date = new Date(timestamp * 1000);
   if (timezone === 'utc') {
     return date.toISOString().replace('T', ' ').substring(0, 23) + ' UTC';
@@ -331,7 +343,7 @@ function escapeCSV(value: string): string {
   return value;
 }
 
-export function exportToCSV(messages: RosoutMessage[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportToCSV(messages: RosoutMessage[], timezone: Timezone = 'local'): string {
   const headers = ['Timestamp','Time','Node','Severity','Message','File','Line','Function','Topics'];
   const rows = messages.map(msg => [
     msg.timestamp.toFixed(6),
@@ -347,7 +359,7 @@ export function exportToCSV(messages: RosoutMessage[], timezone: 'local' | 'utc'
   return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
 
-export function exportToJSON(messages: RosoutMessage[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportToJSON(messages: RosoutMessage[], timezone: Timezone = 'local'): string {
   const exportData = messages.map(msg => ({
     timestamp: msg.timestamp,
     time: formatTimestamp(msg.timestamp, timezone),
@@ -362,7 +374,7 @@ export function exportToJSON(messages: RosoutMessage[], timezone: 'local' | 'utc
   return JSON.stringify(exportData, null, 2);
 }
 
-export function exportToTXT(messages: RosoutMessage[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportToTXT(messages: RosoutMessage[], timezone: Timezone = 'local'): string {
   return messages.map(msg => {
     const time = formatTimestamp(msg.timestamp, timezone);
     const severity = SEVERITY_NAMES[msg.severity] || String(msg.severity);
@@ -373,7 +385,7 @@ export function exportToTXT(messages: RosoutMessage[], timezone: 'local' | 'utc'
   }).join('\n');
 }
 
-export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], timezone: Timezone = 'local'): string {
   const headers = ['Timestamp', 'Time', 'Name', 'Level', 'Message', 'Values'];
   const rows = diagnostics.map(d => [
     d.timestamp.toFixed(6),
@@ -386,7 +398,7 @@ export function exportDiagnosticsToCSV(diagnostics: DiagnosticStatusEntry[], tim
   return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
 
-export function exportDiagnosticsToJSON(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportDiagnosticsToJSON(diagnostics: DiagnosticStatusEntry[], timezone: Timezone = 'local'): string {
   const exportData = diagnostics.map(d => ({
     timestamp: d.timestamp,
     time: formatTimestamp(d.timestamp, timezone),
@@ -398,7 +410,7 @@ export function exportDiagnosticsToJSON(diagnostics: DiagnosticStatusEntry[], ti
   return JSON.stringify(exportData, null, 2);
 }
 
-export function exportDiagnosticsToTXT(diagnostics: DiagnosticStatusEntry[], timezone: 'local' | 'utc' = 'local'): string {
+export function exportDiagnosticsToTXT(diagnostics: DiagnosticStatusEntry[], timezone: Timezone = 'local'): string {
   return diagnostics.map(d => {
     const time = formatTimestamp(d.timestamp, timezone);
     const level = DIAGNOSTIC_LEVEL_NAMES[d.level] || String(d.level);
@@ -410,8 +422,134 @@ export function exportDiagnosticsToTXT(diagnostics: DiagnosticStatusEntry[], tim
   }).join('\n');
 }
 
-export function downloadFile(content: string, filename: string, type: string) {
-  const blob = new Blob([content], { type });
+export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezone = 'local'): Promise<Uint8Array> {
+  const SQL = await getSqlJs();
+  const db = new SQL.Database();
+
+  db.run(`
+    CREATE TABLE rosout_logs (
+      id INTEGER PRIMARY KEY,
+      timestamp REAL NOT NULL,
+      time_text TEXT NOT NULL,
+      node TEXT NOT NULL,
+      severity_code INTEGER NOT NULL,
+      severity_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      file TEXT NOT NULL,
+      line INTEGER NOT NULL,
+      function_name TEXT NOT NULL,
+      topics_text TEXT NOT NULL
+    );
+  `);
+
+  const insert = db.prepare(`
+    INSERT INTO rosout_logs (
+      timestamp, time_text, node, severity_code, severity_name, message, file, line, function_name, topics_text
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.run('BEGIN TRANSACTION');
+  try {
+    for (const msg of messages) {
+      insert.run([
+        msg.timestamp,
+        formatTimestamp(msg.timestamp, timezone),
+        msg.node,
+        msg.severity,
+        SEVERITY_NAMES[msg.severity] || String(msg.severity),
+        msg.message,
+        msg.file || '',
+        msg.line || 0,
+        msg.function || '',
+        (msg.topics || []).join(';'),
+      ]);
+      insert.reset();
+    }
+    db.run('COMMIT');
+  } catch (error) {
+    db.run('ROLLBACK');
+    throw error;
+  }
+
+  insert.free();
+  const binary = db.export();
+  db.close();
+  return binary;
+}
+
+export async function exportDiagnosticsToSQLite(
+  diagnostics: DiagnosticStatusEntry[],
+  timezone: Timezone = 'local'
+): Promise<Uint8Array> {
+  const SQL = await getSqlJs();
+  const db = new SQL.Database();
+
+  db.run(`
+    CREATE TABLE diagnostics (
+      id INTEGER PRIMARY KEY,
+      timestamp REAL NOT NULL,
+      time_text TEXT NOT NULL,
+      name TEXT NOT NULL,
+      level_code INTEGER NOT NULL,
+      level_name TEXT NOT NULL,
+      message TEXT NOT NULL
+    );
+
+    CREATE TABLE diagnostic_values (
+      id INTEGER PRIMARY KEY,
+      diagnostic_id INTEGER NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      FOREIGN KEY (diagnostic_id) REFERENCES diagnostics(id)
+    );
+  `);
+
+  const insertDiagnostic = db.prepare(`
+    INSERT INTO diagnostics (
+      timestamp, time_text, name, level_code, level_name, message
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const insertValue = db.prepare(`
+    INSERT INTO diagnostic_values (diagnostic_id, key, value)
+    VALUES (?, ?, ?)
+  `);
+
+  db.run('BEGIN TRANSACTION');
+  try {
+    for (const diagnostic of diagnostics) {
+      insertDiagnostic.run([
+        diagnostic.timestamp,
+        formatTimestamp(diagnostic.timestamp, timezone),
+        diagnostic.name,
+        diagnostic.level,
+        DIAGNOSTIC_LEVEL_NAMES[diagnostic.level] || String(diagnostic.level),
+        diagnostic.message,
+      ]);
+
+      const diagnosticId = db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0] as number;
+      insertDiagnostic.reset();
+
+      for (const entry of diagnostic.values) {
+        insertValue.run([diagnosticId, entry.key, entry.value]);
+        insertValue.reset();
+      }
+    }
+    db.run('COMMIT');
+  } catch (error) {
+    db.run('ROLLBACK');
+    throw error;
+  }
+
+  insertDiagnostic.free();
+  insertValue.free();
+  const binary = db.export();
+  db.close();
+  return binary;
+}
+
+export function downloadFile(content: string | Uint8Array, filename: string, type: string) {
+  const blobPart: BlobPart = content instanceof Uint8Array ? new Uint8Array(content).buffer as ArrayBuffer : content;
+  const blob = new Blob([blobPart], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

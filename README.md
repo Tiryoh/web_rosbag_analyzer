@@ -8,7 +8,7 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 - 📦 **Drag & Drop** - Simply drag your .bag file to analyze
 - 🔍 **Advanced Filtering** - Filter by nodes, severity, keywords, or regex patterns
 - 📊 **Statistics** - Visual statistics and top node analysis
-- 💾 **Export** - Export filtered results to CSV, JSON, or TXT
+- 💾 **Export** - Export filtered results to CSV, JSON, TXT, or SQLite
 - 🎨 **Modern UI** - Clean, responsive interface with dark mode support
 - ⚡ **Fast** - Powered by WebAssembly for native-like performance
 - 🔁 **Supported ROS versions** - Currently supports ROS1 (rosbag). ROS2 (rosbag2) support is TODO.
@@ -62,7 +62,8 @@ Download the latest release and open `index.html` in your browser.
    - Messages are color-coded by severity
 
 4. **Export Results**
-   - Choose format: CSV (Excel compatible), JSON, or TXT
+   - Choose format: CSV (Excel compatible), JSON, TXT, or SQLite
+   - SQLite exports can be queried locally with SQL tools such as `sqlite3` or DB Browser for SQLite
    - Download filtered results instantly
 
 ## 🛠️ Technology Stack
@@ -85,6 +86,7 @@ Download the latest release and open `index.html` in your browser.
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
+- `npm run test:e2e` - Run Playwright end-to-end tests
 
 ## 📝 License
 
