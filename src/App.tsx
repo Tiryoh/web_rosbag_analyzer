@@ -106,69 +106,75 @@ function App() {
   };
 
   const handleExport = async (format: 'csv' | 'json' | 'txt' | 'sqlite') => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    let content: string | Uint8Array;
-    let filename: string;
-    let type: string;
+    try {
+      setError('');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      let content: string | Uint8Array;
+      let filename: string;
+      let type: string;
 
-    if (activeTab === 'diagnostics') {
-      const prefix = 'diagnostics_export';
-      switch (format) {
-        case 'csv':
-          content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
-        case 'sqlite':
-          content = await exportDiagnosticsToSQLite(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.sqlite`;
-          type = 'application/vnd.sqlite3';
-          break;
-        default: {
-          const exhaustiveFormat: never = format;
-          throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+      if (activeTab === 'diagnostics') {
+        const prefix = 'diagnostics_export';
+        switch (format) {
+          case 'csv':
+            content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportDiagnosticsToSQLite(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
+        }
+      } else {
+        switch (format) {
+          case 'csv':
+            content = exportToCSV(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportToJSON(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportToTXT(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportToSQLite(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
         }
       }
-    } else {
-      switch (format) {
-        case 'csv':
-          content = exportToCSV(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportToJSON(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportToTXT(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
-        case 'sqlite':
-          content = await exportToSQLite(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.sqlite`;
-          type = 'application/vnd.sqlite3';
-          break;
-        default: {
-          const exhaustiveFormat: never = format;
-          throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
-        }
-      }
+
+      downloadFile(content, filename, type);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to export file';
+      setError(errorMessage);
     }
-
-    downloadFile(content, filename, type);
   };
 
   const toggleDiagRow = (idx: number) => {

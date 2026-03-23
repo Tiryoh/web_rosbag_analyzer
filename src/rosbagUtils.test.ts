@@ -21,10 +21,19 @@ const diagEntries: DiagnosticStatusEntry[] = [
   { timestamp: 400, name: '/motor/right', level: 3, message: 'Stale: no update', values: [] },
 ];
 
+function resolveNodeFilePath(fileUrl: URL): string {
+  if (fileUrl.protocol !== 'file:') {
+    return fileUrl.toString();
+  }
+
+  const pathname = decodeURIComponent(fileUrl.pathname);
+  return /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
+}
+
 const sqlPromise = initSqlJs({
   locateFile: () => (
     typeof window === 'undefined'
-      ? new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url).pathname
+      ? resolveNodeFilePath(new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url))
       : sqlWasmUrl
   ),
 });

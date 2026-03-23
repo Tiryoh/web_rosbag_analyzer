@@ -10,6 +10,8 @@ declare module 'sql.js' {
 
   export interface Statement {
     run(params?: unknown[] | Record<string, unknown>): void;
+    step(): boolean;
+    get(params?: unknown[] | Record<string, unknown>): unknown[];
     reset(): void;
     free(): void;
   }

@@ -9,9 +9,19 @@ import { DIAGNOSTIC_LEVEL_NAMES, SEVERITY_NAMES } from './types';
 type Timezone = 'local' | 'utc';
 
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
+
+function resolveNodeFilePath(fileUrl: URL): string {
+  if (fileUrl.protocol !== 'file:') {
+    return fileUrl.toString();
+  }
+
+  const pathname = decodeURIComponent(fileUrl.pathname);
+  return /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname;
+}
+
 const resolvedSqlWasmUrl =
   typeof window === 'undefined'
-    ? new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url).pathname
+    ? resolveNodeFilePath(new URL('../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url))
     : sqlWasmUrl;
 
 async function getSqlJs(): Promise<SqlJsStatic> {
@@ -448,32 +458,37 @@ export async function exportToSQLite(messages: RosoutMessage[], timezone: Timezo
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  db.run('BEGIN TRANSACTION');
+  let binary: Uint8Array;
   try {
-    for (const msg of messages) {
-      insert.run([
-        msg.timestamp,
-        formatTimestamp(msg.timestamp, timezone),
-        msg.node,
-        msg.severity,
-        SEVERITY_NAMES[msg.severity] || String(msg.severity),
-        msg.message,
-        msg.file || '',
-        msg.line || 0,
-        msg.function || '',
-        (msg.topics || []).join(';'),
-      ]);
-      insert.reset();
+    db.run('BEGIN TRANSACTION');
+    try {
+      for (const msg of messages) {
+        insert.run([
+          msg.timestamp,
+          formatTimestamp(msg.timestamp, timezone),
+          msg.node,
+          msg.severity,
+          SEVERITY_NAMES[msg.severity] || String(msg.severity),
+          msg.message,
+          msg.file || '',
+          msg.line || 0,
+          msg.function || '',
+          (msg.topics || []).join(';'),
+        ]);
+        insert.reset();
+      }
+      db.run('COMMIT');
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
     }
-    db.run('COMMIT');
-  } catch (error) {
-    db.run('ROLLBACK');
-    throw error;
+
+    binary = db.export();
+  } finally {
+    insert.free();
+    db.close();
   }
 
-  insert.free();
-  const binary = db.export();
-  db.close();
   return binary;
 }
 
@@ -513,43 +528,54 @@ export async function exportDiagnosticsToSQLite(
     INSERT INTO diagnostic_values (diagnostic_id, key, value)
     VALUES (?, ?, ?)
   `);
+  const selectLastInsertRowId = db.prepare('SELECT last_insert_rowid()');
 
-  db.run('BEGIN TRANSACTION');
+  let binary: Uint8Array;
   try {
-    for (const diagnostic of diagnostics) {
-      insertDiagnostic.run([
-        diagnostic.timestamp,
-        formatTimestamp(diagnostic.timestamp, timezone),
-        diagnostic.name,
-        diagnostic.level,
-        DIAGNOSTIC_LEVEL_NAMES[diagnostic.level] || String(diagnostic.level),
-        diagnostic.message,
-      ]);
+    db.run('BEGIN TRANSACTION');
+    try {
+      for (const diagnostic of diagnostics) {
+        insertDiagnostic.run([
+          diagnostic.timestamp,
+          formatTimestamp(diagnostic.timestamp, timezone),
+          diagnostic.name,
+          diagnostic.level,
+          DIAGNOSTIC_LEVEL_NAMES[diagnostic.level] || String(diagnostic.level),
+          diagnostic.message,
+        ]);
+        insertDiagnostic.reset();
 
-      const diagnosticId = db.exec('SELECT last_insert_rowid() AS id')[0].values[0][0] as number;
-      insertDiagnostic.reset();
+        if (!selectLastInsertRowId.step()) {
+          throw new Error('Failed to read last_insert_rowid()');
+        }
+        const [diagnosticIdValue] = selectLastInsertRowId.get();
+        const diagnosticId = Number(diagnosticIdValue);
+        selectLastInsertRowId.reset();
 
-      for (const entry of diagnostic.values) {
-        insertValue.run([diagnosticId, entry.key, entry.value]);
-        insertValue.reset();
+        for (const entry of diagnostic.values) {
+          insertValue.run([diagnosticId, entry.key, entry.value]);
+          insertValue.reset();
+        }
       }
+      db.run('COMMIT');
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
     }
-    db.run('COMMIT');
-  } catch (error) {
-    db.run('ROLLBACK');
-    throw error;
+
+    binary = db.export();
+  } finally {
+    selectLastInsertRowId.free();
+    insertDiagnostic.free();
+    insertValue.free();
+    db.close();
   }
 
-  insertDiagnostic.free();
-  insertValue.free();
-  const binary = db.export();
-  db.close();
   return binary;
 }
 
 export function downloadFile(content: string | Uint8Array, filename: string, type: string) {
-  const blobPart: BlobPart = content instanceof Uint8Array ? new Uint8Array(content).buffer as ArrayBuffer : content;
-  const blob = new Blob([blobPart], { type });
+  const blob = new Blob([content as unknown as BlobPart], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
