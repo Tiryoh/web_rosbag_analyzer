@@ -8,9 +8,11 @@ import {
   exportToCSV,
   exportToJSON,
   exportToTXT,
+  exportToSQLite,
   exportDiagnosticsToCSV,
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
+  exportDiagnosticsToSQLite,
   downloadFile,
   filterDiagnostics,
 } from './rosbagUtils';
@@ -113,52 +115,76 @@ function App() {
     setFilteredMessages(filtered);
   };
 
-  const handleExport = (format: 'csv' | 'json' | 'txt') => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    let content: string;
-    let filename: string;
-    let type: string;
+  const handleExport = async (format: 'csv' | 'json' | 'txt' | 'sqlite') => {
+    try {
+      setError('');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      let content: string | Uint8Array;
+      let filename: string;
+      let type: string;
 
-    if (activeTab === 'diagnostics') {
-      const prefix = 'diagnostics_export';
-      switch (format) {
-        case 'csv':
-          content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
+      if (activeTab === 'diagnostics') {
+        const prefix = 'diagnostics_export';
+        switch (format) {
+          case 'csv':
+            content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportDiagnosticsToSQLite(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
+        }
+      } else {
+        switch (format) {
+          case 'csv':
+            content = exportToCSV(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportToJSON(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportToTXT(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportToSQLite(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
+        }
       }
-    } else {
-      switch (format) {
-        case 'csv':
-          content = exportToCSV(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportToJSON(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportToTXT(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
-      }
+
+      downloadFile(content, filename, type);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to export file';
+      setError(errorMessage);
     }
-
-    downloadFile(content, filename, type);
   };
 
   const toggleDiagRow = (idx: number) => {
@@ -284,7 +310,7 @@ function App() {
               </button>
             </div>
           </div>
-          <img src="./logo.png" alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
+          <img src="/logo.png" alt="ROSbag Analyzer" className="mx-auto h-28 sm:h-36 mb-3" />
           <h1 className="sr-only">ROSbag Analyzer</h1>
           <p className="text-surface-600 dark:text-surface-300 text-sm mx-auto leading-relaxed">
             {t('header.description')}
@@ -326,6 +352,7 @@ function App() {
               accept=".bag"
               onChange={handleFileUpload}
               disabled={loading}
+              data-testid="bag-upload-input"
             />
           </div>
         </div>
@@ -371,6 +398,7 @@ function App() {
           <div className="flex gap-1 mb-6 p-1 bg-surface-200/60 dark:bg-surface-800/60 rounded-lg w-fit mx-auto animate-fade-in">
             <button
               onClick={() => setActiveTab('rosout')}
+              data-testid="rosout-tab"
               className={`px-5 py-2 text-sm font-medium rounded-md transition-all ${
                 activeTab === 'rosout'
                   ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
@@ -384,6 +412,7 @@ function App() {
             </button>
             <button
               onClick={() => setActiveTab('diagnostics')}
+              data-testid="diagnostics-tab"
               className={`px-5 py-2 text-sm font-medium rounded-md transition-all ${
                 activeTab === 'diagnostics'
                   ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
@@ -577,6 +606,13 @@ function App() {
                 <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
                 <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
                 <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                <button
+                  onClick={() => handleExport('sqlite')}
+                  data-testid="export-rosout-sqlite"
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                >
+                  SQLite
+                </button>
               </div>
             </div>
           </div>
@@ -748,6 +784,13 @@ function App() {
                 <button onClick={() => handleExport('csv')} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors">CSV</button>
                 <button onClick={() => handleExport('json')} className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-md transition-colors">JSON</button>
                 <button onClick={() => handleExport('txt')} className="px-3 py-1.5 text-xs font-medium bg-surface-600 hover:bg-surface-700 text-white rounded-md transition-colors">TXT</button>
+                <button
+                  onClick={() => handleExport('sqlite')}
+                  data-testid="export-diagnostics-sqlite"
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-800 text-white rounded-md transition-colors"
+                >
+                  SQLite
+                </button>
               </div>
             </div>
           </div>
