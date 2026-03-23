@@ -25,6 +25,6 @@ dist-ssr
 *.sw?
 
 # Playwright
-test-results/
 playwright-report/
 playwright-report-singlefile/
+test-results/

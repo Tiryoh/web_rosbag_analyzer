@@ -8,9 +8,11 @@ import {
   exportToCSV,
   exportToJSON,
   exportToTXT,
+  exportToSQLite,
   exportDiagnosticsToCSV,
   exportDiagnosticsToJSON,
   exportDiagnosticsToTXT,
+  exportDiagnosticsToSQLite,
   downloadFile,
   filterDiagnostics,
 } from './rosbagUtils';
@@ -103,52 +105,76 @@ function App() {
     setFilteredMessages(filtered);
   };
 
-  const handleExport = (format: 'csv' | 'json' | 'txt') => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    let content: string;
-    let filename: string;
-    let type: string;
+  const handleExport = async (format: 'csv' | 'json' | 'txt' | 'sqlite') => {
+    try {
+      setError('');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      let content: string | Uint8Array;
+      let filename: string;
+      let type: string;
 
-    if (activeTab === 'diagnostics') {
-      const prefix = 'diagnostics_export';
-      switch (format) {
-        case 'csv':
-          content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
-          filename = `${prefix}_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
+      if (activeTab === 'diagnostics') {
+        const prefix = 'diagnostics_export';
+        switch (format) {
+          case 'csv':
+            content = exportDiagnosticsToCSV(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportDiagnosticsToJSON(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportDiagnosticsToTXT(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportDiagnosticsToSQLite(filteredDiagnostics, timezone);
+            filename = `${prefix}_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
+        }
+      } else {
+        switch (format) {
+          case 'csv':
+            content = exportToCSV(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.csv`;
+            type = 'text/csv';
+            break;
+          case 'json':
+            content = exportToJSON(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.json`;
+            type = 'application/json';
+            break;
+          case 'txt':
+            content = exportToTXT(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.txt`;
+            type = 'text/plain';
+            break;
+          case 'sqlite':
+            content = await exportToSQLite(filteredMessages, timezone);
+            filename = `rosout_export_${timestamp}.sqlite`;
+            type = 'application/vnd.sqlite3';
+            break;
+          default: {
+            const exhaustiveFormat: never = format;
+            throw new Error(`Unsupported export format: ${exhaustiveFormat}`);
+          }
+        }
       }
-    } else {
-      switch (format) {
-        case 'csv':
-          content = exportToCSV(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.csv`;
-          type = 'text/csv';
-          break;
-        case 'json':
-          content = exportToJSON(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.json`;
-          type = 'application/json';
-          break;
-        case 'txt':
-          content = exportToTXT(filteredMessages, timezone);
-          filename = `rosout_export_${timestamp}.txt`;
-          type = 'text/plain';
-          break;
-      }
+
+      downloadFile(content, filename, type);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to export file';
+      setError(errorMessage);
     }
-
-    downloadFile(content, filename, type);
   };
 
   const toggleDiagRow = (idx: number) => {
@@ -273,6 +299,7 @@ function App() {
               accept=".bag"
               onChange={handleFileUpload}
               disabled={loading}
+              data-testid="bag-upload-input"
             />
           </label>
 
@@ -305,6 +332,7 @@ function App() {
           <div className="flex mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
             <button
               onClick={() => setActiveTab('rosout')}
+              data-testid="rosout-tab"
               className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
                 activeTab === 'rosout'
                   ? 'bg-blue-500 text-white'
@@ -315,6 +343,7 @@ function App() {
             </button>
             <button
               onClick={() => setActiveTab('diagnostics')}
+              data-testid="diagnostics-tab"
               className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
                 activeTab === 'diagnostics'
                   ? 'bg-blue-500 text-white'
@@ -577,6 +606,14 @@ function App() {
                   <Download className="w-4 h-4" />
                   TXT
                 </button>
+                <button
+                  onClick={() => handleExport('sqlite')}
+                  data-testid="export-rosout-sqlite"
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-md font-medium transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  SQLite
+                </button>
               </div>
             </div>
           </div>
@@ -831,6 +868,14 @@ function App() {
                 >
                   <Download className="w-4 h-4" />
                   TXT
+                </button>
+                <button
+                  onClick={() => handleExport('sqlite')}
+                  data-testid="export-diagnostics-sqlite"
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-md font-medium transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  SQLite
                 </button>
               </div>
             </div>

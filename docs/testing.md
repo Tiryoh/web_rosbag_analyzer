@@ -16,6 +16,8 @@ This document defines the test specification for the filter functions in `src/ro
 - **vitest** (configured via Vite)
 - Run: `npm test` (single run) / `npm run test:watch` (watch mode)
 - Test file: `src/rosbagUtils.test.ts`
+- **Playwright** for browser E2E
+- Run: `npm run test:e2e`
 
 ---
 

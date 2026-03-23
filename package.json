@@ -22,7 +22,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "seek-bzip": "^2.0.0",
-    "setimmediate": "^1.0.5"
+    "setimmediate": "^1.0.5",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
