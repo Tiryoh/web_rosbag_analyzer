@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-singlefile
 dist-ssr
 *.local
 
@@ -26,3 +27,4 @@ dist-ssr
 # Playwright
 test-results/
 playwright-report/
+playwright-report-singlefile/

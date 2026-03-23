@@ -1,5 +1,7 @@
 import Bag from '@foxglove/rosbag/dist/cjs/Bag';
 import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
+import { decompress as bzip2Decompress } from 'seek-bzip';
+import lz4 from 'lz4js';
 import type { RosoutMessage, DiagnosticStatusEntry } from './types';
 import { DIAGNOSTIC_LEVEL_NAMES } from './types';
 
@@ -31,11 +33,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Creating BlobReader...');
     const reader = new BlobReader(new Blob([arrayBuffer]));
 
-    // Dynamically import decompression libraries
     console.log('Loading decompression libraries...');
-    const { decompress: bzip2Decompress } = await import('seek-bzip');
-    const lz4Module = await import('lz4js');
-    const lz4 = lz4Module.default || lz4Module;
 
     console.log('Creating Bag with decompression support...');
     const bag = new Bag(reader, {

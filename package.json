@@ -7,11 +7,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:singlefile": "tsc && vite build --config vite.singlefile.config.ts",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:singlefile": "E2E_VARIANT=singlefile playwright test"
   },
   "dependencies": {
     "@foxglove/rosbag": "^0.4.1",
@@ -38,6 +40,7 @@
     "tslib": "^2.8.1",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
+    "vite-plugin-singlefile": "^2.3.2",
     "vitest": "^4.0.18"
   }
 }
