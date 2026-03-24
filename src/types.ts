@@ -27,19 +27,19 @@ export const SEVERITY_NAMES: Record<number, string> = {
 };
 
 export const SEVERITY_COLORS: Record<number, string> = {
-  1: 'text-gray-400',
-  2: 'text-green-500',
-  4: 'text-yellow-500',
-  8: 'text-red-500',
-  16: 'text-red-700 font-bold',
+  1: 'text-surface-400',
+  2: 'text-emerald-600 dark:text-emerald-400',
+  4: 'text-amber-600 dark:text-amber-400',
+  8: 'text-red-600 dark:text-red-400',
+  16: 'text-red-700 dark:text-red-300 font-bold',
 };
 
 export const SEVERITY_BG_COLORS: Record<number, string> = {
-  1: 'bg-gray-100',
-  2: 'bg-green-50',
-  4: 'bg-yellow-50',
-  8: 'bg-red-50',
-  16: 'bg-red-100',
+  1: 'bg-surface-100/50 dark:bg-surface-800/30',
+  2: 'bg-emerald-50 dark:bg-emerald-950/30',
+  4: 'bg-amber-50 dark:bg-amber-950/30',
+  8: 'bg-red-50 dark:bg-red-950/30',
+  16: 'bg-red-100 dark:bg-red-950/50',
 };
 
 // Diagnostics types
@@ -59,15 +59,15 @@ export const DIAGNOSTIC_LEVEL_NAMES: Record<number, string> = {
 };
 
 export const DIAGNOSTIC_LEVEL_COLORS: Record<number, string> = {
-  0: 'text-green-500',
-  1: 'text-yellow-500',
-  2: 'text-red-500',
-  3: 'text-gray-400',
+  0: 'text-emerald-600 dark:text-emerald-400',
+  1: 'text-amber-600 dark:text-amber-400',
+  2: 'text-red-600 dark:text-red-400',
+  3: 'text-surface-400',
 };
 
 export const DIAGNOSTIC_LEVEL_BG_COLORS: Record<number, string> = {
-  0: 'bg-green-50',
-  1: 'bg-yellow-50',
-  2: 'bg-red-50',
-  3: 'bg-gray-100',
+  0: 'bg-emerald-50 dark:bg-emerald-950/30',
+  1: 'bg-amber-50 dark:bg-amber-950/30',
+  2: 'bg-red-50 dark:bg-red-950/30',
+  3: 'bg-surface-100/50 dark:bg-surface-800/30',
 };

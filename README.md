@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/logo.png" alt="ROSbag Analyzer" width="400" />
+</p>
+
 # ROSbag Analyzer - Web Application
 
 Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembly. No installation, no server, no WSL required - just open in any modern browser!
