@@ -63,7 +63,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Creating BlobReader...');
     const reader = new BlobReader(new Blob([arrayBuffer]));
 
-    console.log('Loading decompression libraries...');
+    console.log('Initializing decompression handlers...');
 
     console.log('Creating Bag with decompression support...');
     const bag = new Bag(reader, {

@@ -49,7 +49,8 @@ jobs:
 
           rm -rf "${staging_dir}"
           mkdir -p "${staging_dir}"
-          cp dist-singlefile/index.html "${staging_dir}/rosbag-analyzer.html"
+          cp -a dist-singlefile/. "${staging_dir}/"
+          mv "${staging_dir}/index.html" "${staging_dir}/rosbag-analyzer.html"
 
           cd "${RUNNER_TEMP}"
           zip -r "${asset_name}.zip" "${asset_name}"
