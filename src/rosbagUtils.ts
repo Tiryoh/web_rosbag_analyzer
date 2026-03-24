@@ -8,6 +8,47 @@ import { DIAGNOSTIC_LEVEL_NAMES, SEVERITY_NAMES } from './types';
 
 type Timezone = 'local' | 'utc';
 
+type BagConnectionView = {
+  topic: string;
+  type?: string;
+};
+
+type BagTimestamp = {
+  sec: number;
+  nsec: number;
+};
+
+type RosoutPayload = {
+  level?: number;
+  msg?: string;
+  name?: string;
+  file?: string;
+  line?: number;
+  function?: string;
+  topics?: string[];
+};
+
+type DiagnosticValuePayload = {
+  key?: string;
+  value?: string;
+};
+
+type DiagnosticStatusPayload = {
+  name?: string;
+  level?: number;
+  message?: string;
+  values?: DiagnosticValuePayload[];
+};
+
+type DiagnosticArrayPayload = {
+  status?: DiagnosticStatusPayload[];
+};
+
+type ReadMessageResult<T> = {
+  message: T;
+  timestamp: BagTimestamp;
+};
+
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 
 function resolveNodeFilePath(fileUrl: URL): string {
@@ -124,7 +165,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
     if (rosoutTopics.length === 0 && diagnosticsTopics.length === 0) {
       const availableTopics = Array.from(bag.connections.values())
-        .map((conn: any) => `  - ${conn.topic} [${conn.type}]`)
+        .map((conn: BagConnectionView) => `  - ${conn.topic} [${conn.type ?? 'unknown'}]`)
         .join('\n');
 
       throw new Error(
@@ -145,7 +186,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
       await bag.readMessages(
         { topics: rosoutTopics, decompress: decompressOptions },
-        (result: any) => {
+        (result: ReadMessageResult<RosoutPayload>) => {
           messageCount++;
           if (messageCount % 100 === 0) {
             console.log(`  Processing rosout message ${messageCount}...`);
@@ -185,7 +226,7 @@ export async function loadRosbagMessages(file: File): Promise<{
 
       await bag.readMessages(
         { topics: diagnosticsTopics, decompress: decompressOptions },
-        (result: any) => {
+        (result: ReadMessageResult<DiagnosticArrayPayload>) => {
           const msg = result.message;
           if (!msg || !msg.status) return;
 
@@ -195,7 +236,7 @@ export async function loadRosbagMessages(file: File): Promise<{
             const name: string = status.name || 'unknown';
             const level: number = status.level ?? 0;
             const message: string = status.message || '';
-            const values: { key: string; value: string }[] = (status.values || []).map((v: any) => ({
+            const values: { key: string; value: string }[] = (status.values || []).map((v: DiagnosticValuePayload) => ({
               key: v.key || '',
               value: v.value || '',
             }));
