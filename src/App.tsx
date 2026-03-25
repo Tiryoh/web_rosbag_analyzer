@@ -361,7 +361,7 @@ function App() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".bag,.mcap"
+              accept=".bag,.mcap,.zstd"
               onChange={handleFileUpload}
               disabled={loading}
               data-testid="bag-upload-input"

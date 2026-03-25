@@ -1,5 +1,5 @@
-import { McapIndexedReader } from '@mcap/core';
-import type { IReadable, DecompressHandlers } from '@mcap/core';
+import { McapIndexedReader, McapStreamReader } from '@mcap/core';
+import type { IReadable, DecompressHandlers, TypedMcapRecord } from '@mcap/core';
 import { decompress as zstdDecompress } from 'fzstd';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
@@ -62,6 +62,152 @@ function toSeverity(level: number | undefined): SeverityLevel {
   return ROS2_SEVERITY[level] ?? 'DEBUG';
 }
 
+/** Check if the buffer ends with MCAP footer magic (has an index). */
+function hasMcapFooter(buffer: ArrayBuffer): boolean {
+  const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
+  if (buffer.byteLength < MCAP_MAGIC.length) return false;
+  const tail = new Uint8Array(buffer, buffer.byteLength - MCAP_MAGIC.length, MCAP_MAGIC.length);
+  return MCAP_MAGIC.every((b, i) => tail[i] === b);
+}
+
+/**
+ * Shared message-processing logic used by both indexed and streaming readers.
+ */
+class McapMessageCollector {
+  private channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
+  private schemasById = new Map<number, { name: string; data: Uint8Array }>();
+  private channelsById = new Map<number, { id: number; schemaId: number }>();
+
+  messages: RosoutMessage[] = [];
+  uniqueNodes = new Set<string>();
+  diagnostics: DiagnosticStatusEntry[] = [];
+  hasDiagnostics = false;
+
+  addSchema(id: number, name: string, data: Uint8Array) {
+    this.schemasById.set(id, { name, data });
+  }
+
+  addChannel(id: number, schemaId: number) {
+    this.channelsById.set(id, { id, schemaId });
+    this.buildReaderForChannel(id, schemaId);
+  }
+
+  private buildReaderForChannel(channelId: number, schemaId: number) {
+    const schema = this.schemasById.get(schemaId);
+    if (!schema) return;
+
+    let kind: 'rosout' | 'diagnostics' | null = null;
+    if (isRosoutSchema(schema.name)) kind = 'rosout';
+    else if (isDiagnosticsSchema(schema.name)) kind = 'diagnostics';
+
+    if (kind && schema.data.length > 0) {
+      const schemaText = new TextDecoder().decode(schema.data);
+      const msgDef = parseMessageDefinition(schemaText, { ros2: true });
+      const msgReader = new Ros2MessageReader(msgDef);
+      this.channelReaders.set(channelId, { reader: msgReader, kind });
+    }
+  }
+
+  processMessage(channelId: number, logTime: bigint, data: Uint8Array) {
+    const channelInfo = this.channelReaders.get(channelId);
+    if (!channelInfo) return;
+
+    const { reader: msgReader, kind } = channelInfo;
+
+    if (kind === 'rosout') {
+      const msg = msgReader.readMessage<Ros2LogMessage>(data);
+      const timestamp = msg.stamp
+        ? msg.stamp.sec + msg.stamp.nanosec / 1e9
+        : Number(logTime) / 1e9;
+      const node = msg.name || 'unknown';
+
+      this.messages.push({
+        timestamp,
+        node,
+        severity: toSeverity(msg.level),
+        message: msg.msg || '',
+        file: msg.file,
+        line: msg.line,
+        function: msg.function,
+      });
+
+      this.uniqueNodes.add(node);
+    } else if (kind === 'diagnostics') {
+      this.hasDiagnostics = true;
+      const msg = msgReader.readMessage<Ros2DiagnosticArray>(data);
+      const headerTimestamp = msg.header?.stamp
+        ? msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+        : Number(logTime) / 1e9;
+
+      if (msg.status) {
+        for (const status of msg.status) {
+          this.diagnostics.push({
+            timestamp: headerTimestamp,
+            name: status.name || 'unknown',
+            level: status.level ?? 0,
+            message: status.message || '',
+            values: status.values || [],
+          });
+        }
+      }
+    }
+  }
+
+  result() {
+    this.messages.sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      messages: this.messages,
+      uniqueNodes: this.uniqueNodes,
+      diagnostics: this.diagnostics,
+      hasDiagnostics: this.hasDiagnostics,
+    };
+  }
+}
+
+async function readIndexed(buffer: ArrayBuffer, decompressHandlers: DecompressHandlers) {
+  const readable = new BlobReadable(buffer);
+  const reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
+
+  const collector = new McapMessageCollector();
+
+  for (const schema of reader.schemasById.values()) {
+    collector.addSchema(schema.id, schema.name, schema.data);
+  }
+  for (const channel of reader.channelsById.values()) {
+    collector.addChannel(channel.id, channel.schemaId);
+  }
+
+  for await (const message of reader.readMessages()) {
+    collector.processMessage(message.channelId, message.logTime, message.data);
+  }
+
+  return collector.result();
+}
+
+function readStreaming(buffer: ArrayBuffer, decompressHandlers: DecompressHandlers) {
+  const streamReader = new McapStreamReader({ decompressHandlers });
+  streamReader.append(new Uint8Array(buffer));
+
+  const collector = new McapMessageCollector();
+
+  let record: TypedMcapRecord | undefined;
+  while ((record = streamReader.nextRecord()) != null) {
+    switch (record.type) {
+      case 'Schema':
+        collector.addSchema(record.id, record.name, record.data);
+        break;
+      case 'Channel':
+        collector.addChannel(record.id, record.schemaId);
+        break;
+      case 'Message':
+        collector.processMessage(record.channelId, record.logTime, record.data);
+        break;
+    }
+  }
+
+  return collector.result();
+}
+
 export async function loadMcapMessages(file: File): Promise<{
   messages: RosoutMessage[];
   uniqueNodes: Set<string>;
@@ -73,115 +219,32 @@ export async function loadMcapMessages(file: File): Promise<{
   console.log('File size:', file.size, 'bytes');
 
   try {
-    const buffer = await file.arrayBuffer();
-    const readable = new BlobReadable(buffer);
+    let buffer = await file.arrayBuffer();
+
+    // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
+    const magic = new Uint8Array(buffer, 0, 4);
+    if (magic[0] === 0x28 && magic[1] === 0xb5 && magic[2] === 0x2f && magic[3] === 0xfd) {
+      buffer = zstdDecompress(new Uint8Array(buffer)).buffer as ArrayBuffer;
+    }
 
     const decompressHandlers: DecompressHandlers = {
-      zstd: (data) =>
-        zstdDecompress(new Uint8Array(data)),
+      zstd: (data) => zstdDecompress(new Uint8Array(data)),
     };
 
-    const reader = await McapIndexedReader.Initialize({
-      readable,
-      decompressHandlers,
-    });
-
-    // Build message readers per channel
-    const channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
-
-    for (const channel of reader.channelsById.values()) {
-      const schema = reader.schemasById.get(channel.schemaId);
-      if (!schema) continue;
-
-      const schemaName = schema.name;
-      let kind: 'rosout' | 'diagnostics' | null = null;
-
-      if (isRosoutSchema(schemaName)) {
-        kind = 'rosout';
-      } else if (isDiagnosticsSchema(schemaName)) {
-        kind = 'diagnostics';
-      }
-
-      if (kind && schema.data.length > 0) {
-        const schemaText = new TextDecoder().decode(schema.data);
-        const msgDef = parseMessageDefinition(schemaText, { ros2: true });
-        const msgReader = new Ros2MessageReader(msgDef);
-        channelReaders.set(channel.id, { reader: msgReader, kind });
-      }
+    // Use indexed reader when footer is present, otherwise fall back to streaming
+    let result;
+    if (hasMcapFooter(buffer)) {
+      result = await readIndexed(buffer, decompressHandlers);
+    } else {
+      result = readStreaming(buffer, decompressHandlers);
     }
 
-    if (channelReaders.size === 0) {
-      const availableTopics = Array.from(reader.channelsById.values())
-        .map(ch => {
-          const schema = reader.schemasById.get(ch.schemaId);
-          return `  - ${ch.topic} [${schema?.name ?? 'unknown'}]`;
-        })
-        .join('\n');
-
-      throw new Error(
-        `No rosout or diagnostics topics found in MCAP file.\n\nAvailable topics:\n${availableTopics}\n\n` +
-        `Looking for schemas: 'rcl_interfaces/msg/Log', 'rosgraph_msgs/msg/Log', or 'diagnostic_msgs/msg/DiagnosticArray'`
-      );
+    console.log(`✓ Successfully loaded ${result.messages.length} rosout messages from ${result.uniqueNodes.size} nodes`);
+    if (result.hasDiagnostics) {
+      console.log(`✓ Successfully loaded ${result.diagnostics.length} diagnostics entries`);
     }
 
-    const messages: RosoutMessage[] = [];
-    const uniqueNodes = new Set<string>();
-    const diagnostics: DiagnosticStatusEntry[] = [];
-    let hasDiagnostics = false;
-
-    for await (const message of reader.readMessages()) {
-      const channelInfo = channelReaders.get(message.channelId);
-      if (!channelInfo) continue;
-
-      const { reader: msgReader, kind } = channelInfo;
-
-      if (kind === 'rosout') {
-        const msg = msgReader.readMessage<Ros2LogMessage>(message.data);
-        const timestamp = msg.stamp
-          ? msg.stamp.sec + msg.stamp.nanosec / 1e9
-          : Number(message.logTime) / 1e9;
-        const node = msg.name || 'unknown';
-
-        messages.push({
-          timestamp,
-          node,
-          severity: toSeverity(msg.level),
-          message: msg.msg || '',
-          file: msg.file,
-          line: msg.line,
-          function: msg.function,
-        });
-
-        uniqueNodes.add(node);
-      } else if (kind === 'diagnostics') {
-        hasDiagnostics = true;
-        const msg = msgReader.readMessage<Ros2DiagnosticArray>(message.data);
-        const headerTimestamp = msg.header?.stamp
-          ? msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
-          : Number(message.logTime) / 1e9;
-
-        if (msg.status) {
-          for (const status of msg.status) {
-            diagnostics.push({
-              timestamp: headerTimestamp,
-              name: status.name || 'unknown',
-              level: status.level ?? 0,
-              message: status.message || '',
-              values: status.values || [],
-            });
-          }
-        }
-      }
-    }
-
-    messages.sort((a, b) => a.timestamp - b.timestamp);
-
-    console.log(`✓ Successfully loaded ${messages.length} rosout messages from ${uniqueNodes.size} nodes`);
-    if (hasDiagnostics) {
-      console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics entries`);
-    }
-
-    return { messages, uniqueNodes, diagnostics, hasDiagnostics };
+    return result;
   } catch (error) {
     console.error('!!! Error loading MCAP file !!!');
     console.error('Error type:', error?.constructor?.name);
