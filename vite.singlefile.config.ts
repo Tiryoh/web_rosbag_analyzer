@@ -6,6 +6,7 @@ export default mergeConfig(
   baseConfig,
   defineConfig({
     plugins: [viteSingleFile()],
+    publicDir: false,
     build: {
       outDir: 'dist-singlefile',
       sourcemap: false,
