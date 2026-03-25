@@ -62,13 +62,6 @@ function toSeverity(level: number | undefined): SeverityLevel {
   return ROS2_SEVERITY[level] ?? 'DEBUG';
 }
 
-/** Check if the buffer ends with MCAP footer magic (has an index). */
-function hasMcapFooter(buffer: ArrayBuffer): boolean {
-  const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
-  if (buffer.byteLength < MCAP_MAGIC.length) return false;
-  const tail = new Uint8Array(buffer, buffer.byteLength - MCAP_MAGIC.length, MCAP_MAGIC.length);
-  return MCAP_MAGIC.every((b, i) => tail[i] === b);
-}
 
 /**
  * Shared message-processing logic used by both indexed and streaming readers.
@@ -77,6 +70,7 @@ class McapMessageCollector {
   private channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
   private channelsById = new Map<number, { id: number; schemaId: number }>();
+  private lastDiagState = new Map<string, { level: number; message: string }>();
 
   messages: RosoutMessage[] = [];
   uniqueNodes = new Set<string>();
@@ -141,13 +135,21 @@ class McapMessageCollector {
 
       if (msg.status) {
         for (const status of msg.status) {
-          this.diagnostics.push({
-            timestamp: headerTimestamp,
-            name: status.name || 'unknown',
-            level: status.level ?? 0,
-            message: status.message || '',
-            values: status.values || [],
-          });
+          const name = status.name || 'unknown';
+          const level = status.level ?? 0;
+          const message = status.message || '';
+
+          const prev = this.lastDiagState.get(name);
+          if (!prev || prev.level !== level || prev.message !== message) {
+            this.lastDiagState.set(name, { level, message });
+            this.diagnostics.push({
+              timestamp: headerTimestamp,
+              name,
+              level,
+              message,
+              values: status.values || [],
+            });
+          }
         }
       }
     }
@@ -231,11 +233,11 @@ export async function loadMcapMessages(file: File): Promise<{
       zstd: (data) => zstdDecompress(new Uint8Array(data)),
     };
 
-    // Use indexed reader when footer is present, otherwise fall back to streaming
+    // Try indexed reader first, fall back to streaming for non-indexed files
     let result;
-    if (hasMcapFooter(buffer)) {
+    try {
       result = await readIndexed(buffer, decompressHandlers);
-    } else {
+    } catch {
       result = readStreaming(buffer, decompressHandlers);
     }
 
