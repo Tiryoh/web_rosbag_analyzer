@@ -70,7 +70,7 @@ class McapMessageCollector {
   private channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
   private channelsById = new Map<number, { id: number; schemaId: number }>();
-  private lastDiagState = new Map<string, { level: number; message: string }>();
+  private lastDiagState = new Map<string, { level: number; message: string; valuesKey: string }>();
 
   messages: RosoutMessage[] = [];
   uniqueNodes = new Set<string>();
@@ -139,15 +139,17 @@ class McapMessageCollector {
           const level = status.level ?? 0;
           const message = status.message || '';
 
+          const values = status.values || [];
+          const valuesKey = values.map(v => `${v.key}=${v.value}`).join(',');
           const prev = this.lastDiagState.get(name);
-          if (!prev || prev.level !== level || prev.message !== message) {
-            this.lastDiagState.set(name, { level, message });
+          if (!prev || prev.level !== level || prev.message !== message || prev.valuesKey !== valuesKey) {
+            this.lastDiagState.set(name, { level, message, valuesKey });
             this.diagnostics.push({
               timestamp: headerTimestamp,
               name,
               level,
               message,
-              values: status.values || [],
+              values,
             });
           }
         }
