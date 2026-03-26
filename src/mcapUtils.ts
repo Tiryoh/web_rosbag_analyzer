@@ -1,6 +1,7 @@
 import { McapIndexedReader, McapStreamReader } from '@mcap/core';
 import type { IReadable, DecompressHandlers, TypedMcapRecord } from '@mcap/core';
 import { decompress as zstdDecompress } from 'fzstd';
+import lz4 from 'lz4js';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
@@ -69,7 +70,6 @@ function toSeverity(level: number | undefined): SeverityLevel {
 class McapMessageCollector {
   private channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
-  private channelsById = new Map<number, { id: number; schemaId: number }>();
   private lastDiagState = new Map<string, { level: number; message: string; valuesKey: string }>();
 
   messages: RosoutMessage[] = [];
@@ -82,7 +82,6 @@ class McapMessageCollector {
   }
 
   addChannel(id: number, schemaId: number) {
-    this.channelsById.set(id, { id, schemaId });
     this.buildReaderForChannel(id, schemaId);
   }
 
@@ -226,14 +225,21 @@ export async function loadMcapMessages(file: File): Promise<{
     let buffer = await file.arrayBuffer();
 
     // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
-    const magic = new Uint8Array(buffer, 0, 4);
-    if (magic[0] === 0x28 && magic[1] === 0xb5 && magic[2] === 0x2f && magic[3] === 0xfd) {
-      const decompressed = zstdDecompress(new Uint8Array(buffer));
-      buffer = decompressed.slice().buffer as ArrayBuffer;
+    if (buffer.byteLength >= 4) {
+      const magic = new Uint8Array(buffer, 0, 4);
+      if (magic[0] === 0x28 && magic[1] === 0xb5 && magic[2] === 0x2f && magic[3] === 0xfd) {
+        const decompressed = zstdDecompress(new Uint8Array(buffer));
+        if (decompressed.byteOffset === 0 && decompressed.byteLength === decompressed.buffer.byteLength) {
+          buffer = decompressed.buffer as ArrayBuffer;
+        } else {
+          buffer = decompressed.slice().buffer as ArrayBuffer;
+        }
+      }
     }
 
     const decompressHandlers: DecompressHandlers = {
       zstd: (data) => zstdDecompress(new Uint8Array(data)),
+      lz4: (data) => lz4.decompress(new Uint8Array(data)),
     };
 
     // Try indexed reader first, fall back to streaming for non-indexed files
