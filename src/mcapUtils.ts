@@ -228,7 +228,8 @@ export async function loadMcapMessages(file: File): Promise<{
     // Detect outer zstd compression by magic bytes (0x28 0xB5 0x2F 0xFD)
     const magic = new Uint8Array(buffer, 0, 4);
     if (magic[0] === 0x28 && magic[1] === 0xb5 && magic[2] === 0x2f && magic[3] === 0xfd) {
-      buffer = zstdDecompress(new Uint8Array(buffer)).buffer as ArrayBuffer;
+      const decompressed = zstdDecompress(new Uint8Array(buffer));
+      buffer = decompressed.slice().buffer as ArrayBuffer;
     }
 
     const decompressHandlers: DecompressHandlers = {
