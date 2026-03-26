@@ -59,8 +59,8 @@ function isDiagnosticsSchema(schemaName: string): boolean {
 }
 
 function toSeverity(level: number | undefined): SeverityLevel {
-  if (level == null) return 'DEBUG';
-  return ROS2_SEVERITY[level] ?? 'DEBUG';
+  if (level == null) return 'UNKNOWN';
+  return ROS2_SEVERITY[level] ?? 'UNKNOWN';
 }
 
 
@@ -70,6 +70,7 @@ function toSeverity(level: number | undefined): SeverityLevel {
 class McapMessageCollector {
   private channelReaders = new Map<number, { reader: Ros2MessageReader; kind: 'rosout' | 'diagnostics' }>();
   private schemasById = new Map<number, { name: string; data: Uint8Array }>();
+  private pendingChannels = new Map<number, number>(); // channelId → schemaId (for channels received before their schema)
   private lastDiagState = new Map<string, { level: number; message: string; valuesKey: string }>();
 
   messages: RosoutMessage[] = [];
@@ -79,10 +80,21 @@ class McapMessageCollector {
 
   addSchema(id: number, name: string, data: Uint8Array) {
     this.schemasById.set(id, { name, data });
+    // Retry any channels that were waiting for this schema
+    for (const [channelId, schemaId] of this.pendingChannels) {
+      if (schemaId === id) {
+        this.buildReaderForChannel(channelId, schemaId);
+        this.pendingChannels.delete(channelId);
+      }
+    }
   }
 
   addChannel(id: number, schemaId: number) {
     this.buildReaderForChannel(id, schemaId);
+    // If schema wasn't available yet, queue for later
+    if (!this.channelReaders.has(id)) {
+      this.pendingChannels.set(id, schemaId);
+    }
   }
 
   private buildReaderForChannel(channelId: number, schemaId: number) {
@@ -242,10 +254,15 @@ export async function loadMcapMessages(file: File): Promise<{
       lz4: (data) => lz4.decompress(new Uint8Array(data)),
     };
 
-    // Try indexed reader first, fall back to streaming for non-indexed files
+    // Try indexed reader first, fall back to streaming for non-indexed or unchunked files
     let result;
     try {
       result = await readIndexed(buffer, decompressHandlers);
+      // Indexed reader may succeed but yield 0 messages for unchunked MCAPs;
+      // fall back to streaming which reads Message records directly.
+      if (result.messages.length === 0 && !result.hasDiagnostics) {
+        result = readStreaming(buffer, decompressHandlers);
+      }
     } catch {
       result = readStreaming(buffer, decompressHandlers);
     }

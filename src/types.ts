@@ -1,4 +1,4 @@
-export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'UNKNOWN';
 
 export interface RosoutMessage {
   timestamp: number;
@@ -38,7 +38,7 @@ export const ROS2_SEVERITY: Record<number, SeverityLevel> = {
   50: 'FATAL',
 };
 
-export const SEVERITY_LEVELS: SeverityLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
+export const SEVERITY_LEVELS: SeverityLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'UNKNOWN'];
 
 export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
   'DEBUG': 'text-surface-400',
@@ -46,6 +46,7 @@ export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
   'WARN': 'text-amber-600 dark:text-amber-400',
   'ERROR': 'text-red-600 dark:text-red-400',
   'FATAL': 'text-red-700 dark:text-red-300 font-bold',
+  'UNKNOWN': 'text-surface-500 dark:text-surface-400 italic',
 };
 
 export const SEVERITY_BG_COLORS: Record<SeverityLevel, string> = {
@@ -54,6 +55,7 @@ export const SEVERITY_BG_COLORS: Record<SeverityLevel, string> = {
   'WARN': 'bg-amber-50 dark:bg-amber-950/30',
   'ERROR': 'bg-red-50 dark:bg-red-950/30',
   'FATAL': 'bg-red-100 dark:bg-red-950/50',
+  'UNKNOWN': 'bg-surface-100/50 dark:bg-surface-800/30',
 };
 
 // Diagnostics types
