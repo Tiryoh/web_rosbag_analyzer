@@ -173,3 +173,17 @@ with open(OUTPUT, "rb") as f:
             channel = summary.channels[channel_id]
             schema = summary.schemas[channel.schema_id]
             print(f"  {channel.topic}: {count} msgs ({schema.name})")
+
+# Generate zstd-compressed variant
+import subprocess
+ZSTD_OUTPUT = "test_sample.mcap.zstd"
+subprocess.run(["zstd", "-f", OUTPUT, "-o", ZSTD_OUTPUT], check=True)
+print(f"Generated: {ZSTD_OUTPUT}")
+
+# Generate truncated variant (cut at ~half for testing error handling)
+TRUNCATED_OUTPUT = "test_sample_truncated.mcap"
+with open(OUTPUT, "rb") as f:
+    data = f.read()
+with open(TRUNCATED_OUTPUT, "wb") as f:
+    f.write(data[: len(data) // 2])
+print(f"Generated: {TRUNCATED_OUTPUT} ({len(data) // 2} bytes, truncated from {len(data)})")
