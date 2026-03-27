@@ -23,7 +23,7 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 
 ### Option 1: Live Demo
 
-Open the live demo at: [https://rosbag-analyzer.pages.dev](https://rosbag-analyzer.pages.dev)
+Open the live demo at: [https://rosbag-analyzer.tiryoh.com](https://rosbag-analyzer.tiryoh.com)
 
 ### Option 2: Development Mode
 
