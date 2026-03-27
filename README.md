@@ -45,9 +45,9 @@ npm run build
 
 The built files will be in `dist/` folder. You can serve them with any static web server, or just open `dist/index.html` directly in your browser.
 
-### Option 4: Use Pre-built (Coming Soon)
+### Option 4: Use Pre-built
 
-Download the latest release and open `index.html` in your browser.
+Download the latest release from [Releases](https://github.com/Tiryoh/rosbag-analyzer-web/releases), extract the zip, and open `index.html` in your browser.
 
 ## 📋 How to Use
 
