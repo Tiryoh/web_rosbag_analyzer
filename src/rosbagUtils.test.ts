@@ -350,7 +350,7 @@ describe('Parquet export', () => {
       },
     ], 'utc');
 
-    const rows = await parquetReadObjects({ file: binary.buffer as ArrayBuffer }) as Record<string, unknown>[];
+    const rows = await parquetReadObjects({ file: binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength) as ArrayBuffer }) as Record<string, unknown>[];
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -387,7 +387,7 @@ describe('Parquet export', () => {
       },
     ], 'utc');
 
-    const rows = await parquetReadObjects({ file: binary.buffer as ArrayBuffer }) as Record<string, unknown>[];
+    const rows = await parquetReadObjects({ file: binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength) as ArrayBuffer }) as Record<string, unknown>[];
 
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({

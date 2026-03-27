@@ -17,8 +17,9 @@ async function uploadBag(page: import('@playwright/test').Page) {
 async function readDownloadedParquet(download: import('@playwright/test').Download): Promise<Record<string, unknown>[]> {
   const targetPath = path.join(os.tmpdir(), download.suggestedFilename());
   await download.saveAs(targetPath);
-  const buffer = fs.readFileSync(targetPath);
-  return await parquetReadObjects({ file: buffer.buffer as ArrayBuffer }) as Record<string, unknown>[];
+  const nodeBuffer = fs.readFileSync(targetPath);
+  const arrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
+  return await parquetReadObjects({ file: arrayBuffer as ArrayBuffer }) as Record<string, unknown>[];
 }
 
 test.describe('Parquet export', () => {
