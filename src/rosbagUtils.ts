@@ -472,7 +472,7 @@ export function exportDiagnosticsToParquet(
       { name: 'level_code', data: diagnostics.map(d => d.level), type: 'INT32' },
       { name: 'level_name', data: diagnostics.map(d => DIAGNOSTIC_LEVEL_NAMES[d.level] || String(d.level)), type: 'STRING' },
       { name: 'message', data: diagnostics.map(d => d.message), type: 'STRING' },
-      { name: 'values_json', data: diagnostics.map(d => JSON.stringify(d.values)), type: 'JSON' },
+      { name: 'values_json', data: diagnostics.map(d => d.values), type: 'JSON' },
     ],
   });
   return new Uint8Array(buf);

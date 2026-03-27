@@ -67,13 +67,11 @@ test.describe('Parquet export', () => {
       ['/motor/left', 1, 'WARN', 'High temperature'],
     ]);
 
-    const row0Values = JSON.parse(rows[0].values_json as string);
-    expect(row0Values).toEqual([
+    expect(rows[0].values_json).toEqual([
       { key: 'fps', value: '12' },
       { key: 'resolution', value: '1920x1080' },
     ]);
-    const row1Values = JSON.parse(rows[1].values_json as string);
-    expect(row1Values).toEqual([
+    expect(rows[1].values_json).toEqual([
       { key: 'temp_celsius', value: '75.2' },
       { key: 'current_amps', value: '4.8' },
     ]);

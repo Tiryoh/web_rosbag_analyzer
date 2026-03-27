@@ -398,7 +398,7 @@ describe('Parquet export', () => {
       level_name: 'WARN',
       message: 'Warning: low fps',
     });
-    expect(JSON.parse(rows[0].values_json as string)).toEqual([
+    expect(rows[0].values_json).toEqual([
       { key: 'fps', value: '12' },
       { key: 'temperature', value: '76' },
     ]);
@@ -409,6 +409,6 @@ describe('Parquet export', () => {
       level_name: 'OK',
       message: 'OK',
     });
-    expect(JSON.parse(rows[1].values_json as string)).toEqual([]);
+    expect(rows[1].values_json).toEqual([]);
   });
 });
