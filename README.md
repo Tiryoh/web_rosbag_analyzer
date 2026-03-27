@@ -25,7 +25,11 @@ Browser-based ROSbag analyzer that runs entirely in the browser using WebAssembl
 
 Open the live demo at: [https://rosbag-analyzer.tiryoh.com](https://rosbag-analyzer.tiryoh.com)
 
-### Option 2: Development Mode
+### Option 2: Use Pre-built
+
+Download the latest release from [Releases](https://github.com/Tiryoh/rosbag-analyzer-web/releases), extract the zip, and open the HTML file in your browser. Works completely offline — no internet connection required.
+
+### Option 3: Development Mode
 
 ```bash
 cd web-app
@@ -35,7 +39,7 @@ npm run dev
 
 Then open http://localhost:3000 in your browser.
 
-### Option 3: Build for Production
+### Option 4: Build for Production
 
 ```bash
 cd web-app
@@ -44,10 +48,6 @@ npm run build
 ```
 
 The built files will be in `dist/` folder. You can serve them with any static web server, or just open `dist/index.html` directly in your browser.
-
-### Option 4: Use Pre-built
-
-Download the latest release from [Releases](https://github.com/Tiryoh/rosbag-analyzer-web/releases), extract the zip, and open `index.html` in your browser.
 
 ## 📋 How to Use
 
