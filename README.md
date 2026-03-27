@@ -32,7 +32,7 @@ Download the latest release from [Releases](https://github.com/Tiryoh/rosbag-ana
 ### Option 3: Development Mode
 
 ```bash
-cd web-app
+cd rosbag-analyzer-web
 npm install
 npm run dev
 ```
@@ -42,7 +42,7 @@ Then open http://localhost:3000 in your browser.
 ### Option 4: Build for Production
 
 ```bash
-cd web-app
+cd rosbag-analyzer-web
 npm install
 npm run build
 ```
