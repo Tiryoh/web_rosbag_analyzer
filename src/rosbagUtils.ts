@@ -510,6 +510,9 @@ export async function loadMessages(file: File): Promise<{
   hasDiagnostics: boolean;
   reindexedBlob?: Blob;
 }> {
+  if (file.size === 0) {
+    throw new Error('Empty file. The selected file contains no data.');
+  }
   const name = file.name.toLowerCase();
   if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
     const { loadMcapMessages } = await import('./mcapUtils');
