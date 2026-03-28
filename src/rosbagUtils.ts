@@ -514,11 +514,23 @@ export async function loadMessages(file: File): Promise<{
     throw new Error('Empty file. The selected file contains no data.');
   }
   const name = file.name.toLowerCase();
-  if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
-    const { loadMcapMessages } = await import('./mcapUtils');
-    return loadMcapMessages(file);
+  try {
+    if (name.endsWith('.mcap') || name.endsWith('.mcap.zstd')) {
+      const { loadMcapMessages } = await import('./mcapUtils');
+      return await loadMcapMessages(file);
+    }
+    return await loadRosbagMessages(file);
+  } catch (err) {
+    // Large files may fail to load into memory
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(0);
+    if (file.size > 512 * 1024 * 1024 && err instanceof DOMException && err.name === 'NotReadableError') {
+      throw new Error(
+        `Failed to read file (${sizeMB} MB). The file is too large to load into browser memory.\n\n` +
+        'Try splitting the file into smaller parts or using a command-line tool.'
+      );
+    }
+    throw err;
   }
-  return loadRosbagMessages(file);
 }
 
 /** Download serialized content (CSV/JSON/TXT/Parquet) as a file. */
