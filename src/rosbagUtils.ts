@@ -8,6 +8,22 @@ import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
 type Timezone = 'local' | 'utc';
 
+// Storage for reindexed bag blob (for download)
+let lastReindexedBlob: Blob | null = null;
+let lastReindexedFileName: string | null = null;
+
+export function getReindexedBag(): { blob: Blob; fileName: string } | null {
+  if (lastReindexedBlob && lastReindexedFileName) {
+    return { blob: lastReindexedBlob, fileName: lastReindexedFileName };
+  }
+  return null;
+}
+
+export function clearReindexedBag(): void {
+  lastReindexedBlob = null;
+  lastReindexedFileName = null;
+}
+
 type BagConnectionView = {
   topic: string;
   type?: string;
@@ -103,23 +119,39 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Connections count:', bag.connections.size);
     console.log('Chunk infos count:', bag.chunkInfos.length);
 
-    // Check if bag is indexed
+    // Check if bag is indexed — if not, reindex in-memory and use the reindexed bag
+    let activeBag = bag;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
-      throw new Error(
-        '❌ このbagファイルはインデックス化されていないため、ブラウザ上で読み込めません。\n\n' +
-        '🔧 解決方法:\n' +
-        'ターミナルで以下のコマンドを実行してください:\n\n' +
-        `  rosbag reindex ${file.name}\n\n` +
-        'これによりインデックス付きバージョンが作成され、ブラウザで解析できるようになります。\n\n' +
-        '💡 ヒント: reindexされたファイルは元のファイル名に ".orig" が追加されます。'
-      );
+      console.log('Bag file is unindexed. Reindexing in memory...');
+      const { reindexBagFromBuffer } = await import('./reindexUtils');
+      const reindexedBlob = reindexBagFromBuffer(arrayBuffer, {
+        bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+        lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+      });
+      console.log('Reindex complete. Reopening reindexed bag...');
+
+      const reindexedReader = new BlobReader(reindexedBlob);
+      const reindexedBag = new Bag(reindexedReader, {
+        decompress: {
+          bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
+          lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
+        },
+      });
+      await reindexedBag.open();
+
+      // Store the reindexed blob for download
+      lastReindexedBlob = reindexedBlob;
+      lastReindexedFileName = file.name;
+
+      activeBag = reindexedBag;
+      console.log('Reindexed bag opened successfully');
     }
 
     // Find rosout and diagnostics topics
     console.log('Searching for rosout and diagnostics topics...');
     const rosoutTopics: string[] = [];
     const diagnosticsTopics: string[] = [];
-    for (const [connId, conn] of bag.connections) {
+    for (const [connId, conn] of activeBag.connections) {
       console.log(`  Connection ${connId}: Topic: ${conn.topic}, Type: ${conn.type}`);
       if (conn.topic.includes('rosout') || conn.type === 'rosgraph_msgs/Log') {
         rosoutTopics.push(conn.topic);
@@ -135,7 +167,7 @@ export async function loadRosbagMessages(file: File): Promise<{
     console.log('Total diagnostics topics found:', diagnosticsTopics.length);
 
     if (rosoutTopics.length === 0 && diagnosticsTopics.length === 0) {
-      const availableTopics = Array.from(bag.connections.values())
+      const availableTopics = Array.from(activeBag.connections.values())
         .map((conn: BagConnectionView) => `  - ${conn.topic} [${conn.type ?? 'unknown'}]`)
         .join('\n');
 
@@ -155,7 +187,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log('Reading rosout messages from topics:', rosoutTopics);
       let messageCount = 0;
 
-      await bag.readMessages(
+      await activeBag.readMessages(
         { topics: rosoutTopics, decompress: decompressOptions },
         (result: ReadMessageResult<RosoutPayload>) => {
           messageCount++;
@@ -195,7 +227,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log('Reading diagnostics messages from topics:', diagnosticsTopics);
       const lastState = new Map<string, { level: number; message: string }>();
 
-      await bag.readMessages(
+      await activeBag.readMessages(
         { topics: diagnosticsTopics, decompress: decompressOptions },
         (result: ReadMessageResult<DiagnosticArrayPayload>) => {
           const msg = result.message;
