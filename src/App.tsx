@@ -15,9 +15,8 @@ import {
   exportDiagnosticsToTXT,
   exportDiagnosticsToParquet,
   downloadFile,
+  downloadBlob,
   filterDiagnostics,
-  getReindexedBag,
-  clearReindexedBag,
 } from './rosbagUtils';
 import { useI18n } from './i18n';
 import logoUrl from './assets/logo.png';
@@ -69,7 +68,8 @@ function App() {
   const prevTimezoneRef = useRef(timezone);
 
   // Reindexed bag download state
-  const [wasReindexed, setWasReindexed] = useState(false);
+  const [reindexedBlob, setReindexedBlob] = useState<Blob | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
@@ -88,8 +88,8 @@ function App() {
 
     setLoading(true);
     setError('');
-    clearReindexedBag();
-    setWasReindexed(false);
+    setReindexedBlob(null);
+    setUploadedFileName(file.name);
 
     try {
       console.log('Calling loadMessages...');
@@ -99,10 +99,8 @@ function App() {
       console.log('Unique nodes:', result.uniqueNodes.size);
       console.log('Diagnostics:', result.diagnostics.length, 'hasDiagnostics:', result.hasDiagnostics);
 
-      // Check if file was reindexed during loading
-      const reindexedInfo = getReindexedBag();
-      if (reindexedInfo) {
-        setWasReindexed(true);
+      if (result.reindexedBlob) {
+        setReindexedBlob(result.reindexedBlob);
       }
 
       setMessages(result.messages);
@@ -536,7 +534,7 @@ function App() {
         )}
 
         {/* Reindexed notification */}
-        {wasReindexed && hasData && !loading && (
+        {reindexedBlob && hasData && !loading && (
           <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl animate-fade-in" data-testid="reindex-notice">
             <p className="text-amber-800 dark:text-amber-300 text-sm mb-2.5">
               <span className="font-semibold">{t('reindex.noticeBold')}</span>{' '}
@@ -544,19 +542,7 @@ function App() {
             </p>
             <button
               type="button"
-              onClick={() => {
-                const info = getReindexedBag();
-                if (info) {
-                  const url = URL.createObjectURL(info.blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = info.fileName;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  URL.revokeObjectURL(url);
-                }
-              }}
+              onClick={() => downloadBlob(reindexedBlob, uploadedFileName || 'reindexed.bag')}
               data-testid="download-reindexed"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-white/60 dark:bg-amber-950/40 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40"
             >

@@ -397,7 +397,7 @@ export function reindexBagFromBuffer(
 
         chunks.push({
           chunkOffset: pos,
-          chunkRawBytes: data.subarray(pos, pos + record.totalLen).slice(),
+          chunkRawBytes: data.subarray(pos, pos + record.totalLen),
           connections: scanResult.connections,
           messageIndices: scanResult.messageIndices,
           startTime: scanResult.startTime,
@@ -455,7 +455,13 @@ export function reindexBagFromBuffer(
 
     // Write IndexData records for each connection in this chunk
     for (const [conn, entries] of chunk.messageIndices) {
-      const indexRecord = buildIndexDataRecord(conn, entries);
+      // Ensure index entries are sorted by timestamp (and offset for ties)
+      const sortedEntries = [...entries].sort((a, b) => {
+        if (a.time.sec !== b.time.sec) return a.time.sec - b.time.sec;
+        if (a.time.nsec !== b.time.nsec) return a.time.nsec - b.time.nsec;
+        return a.offset - b.offset;
+      });
+      const indexRecord = buildIndexDataRecord(conn, sortedEntries);
       parts.push(indexRecord);
       currentOffset += indexRecord.length;
     }
