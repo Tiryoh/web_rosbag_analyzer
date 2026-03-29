@@ -19,6 +19,20 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'status.loadedRosout': 'Loaded {messageCount} rosout messages from {nodeCount} nodes',
     'status.loadedRosoutDiagnostics': 'Loaded {messageCount} rosout messages from {nodeCount} nodes, {diagnosticCount} diagnostics state changes',
 
+    // Reindex
+    'reindex.noticeBold': 'Auto-reindexed.',
+    'reindex.noticeBody': 'This bag file had no index. It was reindexed in your browser. Download the reindexed file for faster loading next time.',
+    'reindex.partialBold': 'WARN: partially recovered.',
+    'reindex.partialBody': 'This bag file could only be read partially. The app loaded as much as possible and rebuilt a best-effort index in your browser.',
+    'reindex.partialSummary': 'Recovered {recovered} of {seen} scanned chunks, skipped {skipped}.',
+    'reindex.partialDetails': 'Show recovery details',
+    'reindex.download': 'Download reindexed bag',
+    'reindex.blockersTitle': 'Recovery blockers',
+    'reindex.warning.truncatedTail': 'Tail truncation detected',
+    'reindex.warning.decompressFailed': 'Chunk decompression failed',
+    'reindex.warning.unsupportedCompression': 'Unsupported chunk compression',
+    'reindex.warning.chunkRecordCorrupt': 'Chunk record corruption detected',
+
     // Tabs
     'tab.rosout': 'Rosout',
     'tab.diagnostics': 'Diagnostics',
@@ -107,6 +121,20 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     'error.title': '読み込みエラー',
     'status.loadedRosout': 'rosout {messageCount} 件、{nodeCount} ノードを読み込みました',
     'status.loadedRosoutDiagnostics': 'rosout {messageCount} 件、{nodeCount} ノード、診断状態の変化 {diagnosticCount} 件を読み込みました',
+
+    // Reindex
+    'reindex.noticeBold': '自動reindex済み',
+    'reindex.noticeBody': 'このbagファイルにはインデックスがなかったため、ブラウザ上でreindexしました。次回の読み込みを高速化するにはreindex済みファイルをダウンロードしてください。',
+    'reindex.partialBold': 'WARN: 部分復旧で読み込みました',
+    'reindex.partialBody': 'このbagファイルは完全には読めなかったため、読めた範囲だけを復旧してブラウザ上でreindexしました。',
+    'reindex.partialSummary': '走査した {seen} chunk 中 {recovered} chunk を復旧し、{skipped} chunk をスキップしました。',
+    'reindex.partialDetails': '復旧の詳細を表示',
+    'reindex.download': 'reindex済みbagをダウンロード',
+    'reindex.blockersTitle': '復旧を阻害した要因',
+    'reindex.warning.truncatedTail': 'ファイル末尾の切り詰めを検出',
+    'reindex.warning.decompressFailed': 'chunk の展開に失敗',
+    'reindex.warning.unsupportedCompression': '未対応の chunk 圧縮形式',
+    'reindex.warning.chunkRecordCorrupt': 'chunk 内 record の破損を検出',
 
     // Tabs
     'tab.rosout': 'Rosout',
