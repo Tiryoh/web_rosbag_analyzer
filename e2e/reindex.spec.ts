@@ -27,6 +27,7 @@ test.describe('Unindexed bag reindex', () => {
   test('shows reindex notice', async ({ page }) => {
     await uploadUnindexedBag(page);
     await expect(page.getByTestId('reindex-notice')).toBeVisible();
+    await expect(page.getByTestId('reindex-warning')).not.toBeVisible();
   });
 
   test('shows download reindexed bag button', async ({ page }) => {
@@ -82,20 +83,16 @@ test.describe('Truncated bag reindex', () => {
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(TRUNCATED_PATH);
 
-    // Should either load partial messages or show an error — not crash
-    const success = page.getByText(/Loaded.*rosout messages/);
-    const error = page.getByText(/Error/);
-    await expect(success.or(error)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('error-panel')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('reindex-blockers')).toBeVisible();
   });
 
   test('does not crash the page', async ({ page }) => {
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(TRUNCATED_PATH);
 
-    // Wait for processing to finish (success or error)
-    const success = page.getByText(/Loaded.*rosout messages/);
-    const error = page.getByText(/Error/);
-    await expect(success.or(error)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('error-panel')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('reindex-blocker-item')).toHaveCount(1);
 
     // Page should still be functional — upload area should remain
     await expect(page.getByRole('button', { name: 'Click to upload' })).toBeVisible();

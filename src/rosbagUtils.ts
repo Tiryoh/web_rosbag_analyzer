@@ -3,6 +3,7 @@ import BlobReader from '@foxglove/rosbag/dist/cjs/web/BlobReader';
 import { decompress as bzip2Decompress } from 'seek-bzip';
 import lz4 from 'lz4js';
 import { parquetWriteBuffer } from 'hyparquet-writer';
+import type { ReindexMeta } from './reindexUtils';
 import type { RosoutMessage, DiagnosticStatusEntry, SeverityLevel } from './types';
 import { DIAGNOSTIC_LEVEL_NAMES, ROS1_SEVERITY } from './types';
 
@@ -56,6 +57,7 @@ export async function loadRosbagMessages(file: File): Promise<{
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
   reindexedBlob?: Blob;
+  reindexMeta?: ReindexMeta;
 }> {
   const messages: RosoutMessage[] = [];
   const uniqueNodes = new Set<string>();
@@ -108,13 +110,16 @@ export async function loadRosbagMessages(file: File): Promise<{
     // Check if bag is indexed — if not, reindex in-memory and use the reindexed bag
     let activeBag = bag!;
     let reindexedBlob: Blob | undefined;
+    let reindexMeta: ReindexMeta | undefined;
     if (bag.header && bag.header.indexPosition === 0 && bag.header.connectionCount === 0 && bag.header.chunkCount === 0) {
       console.log('Bag file is unindexed. Reindexing in memory...');
       const { reindexBagFromBuffer } = await import('./reindexUtils');
-      reindexedBlob = reindexBagFromBuffer(arrayBuffer, {
+      const reindexResult = reindexBagFromBuffer(arrayBuffer, {
         bz2: (buffer: Uint8Array) => bzip2Decompress(buffer),
         lz4: (buffer: Uint8Array) => lz4.decompress(buffer),
       });
+      reindexedBlob = reindexResult.blob;
+      reindexMeta = reindexResult.meta;
       console.log('Reindex complete. Reopening reindexed bag...');
 
       const reindexedReader = new BlobReader(reindexedBlob);
@@ -242,7 +247,7 @@ export async function loadRosbagMessages(file: File): Promise<{
       console.log(`✓ Successfully loaded ${diagnostics.length} diagnostics state changes`);
     }
 
-    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBlob };
+    return { messages, uniqueNodes, diagnostics, hasDiagnostics, reindexedBlob, reindexMeta };
   } catch (error) {
     console.error('!!! Error loading rosbag !!!');
     console.error('Error type:', error?.constructor?.name);
@@ -513,6 +518,7 @@ export async function loadMessages(file: File): Promise<{
   diagnostics: DiagnosticStatusEntry[];
   hasDiagnostics: boolean;
   reindexedBlob?: Blob;
+  reindexMeta?: ReindexMeta;
 }> {
   if (file.size === 0) {
     throw new Error('Empty file. The selected file contains no data.');

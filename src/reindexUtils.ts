@@ -40,10 +40,61 @@ interface ChunkScanResult {
   messageIndices: Map<number, IndexEntry[]>;
   startTime: Time;
   endTime: Time;
+  warnings: ReindexWarning[];
 }
 
 type DecompressFn = (buffer: Uint8Array, size?: number) => Uint8Array;
 type Decompress = Record<string, DecompressFn>;
+
+export type ReindexWarningCode =
+  | 'truncated-tail'
+  | 'chunk-decompress-failed'
+  | 'unsupported-compression'
+  | 'chunk-record-corrupt';
+
+export interface ReindexWarning {
+  code: ReindexWarningCode;
+  chunkOffset: number;
+  detail: string;
+  compression?: string;
+}
+
+export interface ReindexMeta {
+  partial: boolean;
+  warnings: ReindexWarning[];
+  chunksSeen: number;
+  chunksRecovered: number;
+  chunksSkipped: number;
+  messagesIndexedApprox: number;
+}
+
+export interface ReindexResult {
+  blob: Blob;
+  meta: ReindexMeta;
+}
+
+export class TruncatedRecordError extends Error {
+  readonly kind = 'truncated';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'TruncatedRecordError';
+  }
+}
+
+export class ReindexFailureError extends Error {
+  readonly code = 'no-readable-chunks';
+  readonly blockers: ReindexWarning[];
+
+  constructor(blockers: ReindexWarning[]) {
+    const message = blockers.length > 0
+      ? `No readable chunks found in bag file.\n\nRecovery blockers:\n${blockers.map((warning) => `- ${formatWarningSummary(warning)}`).join('\n')}`
+      : 'No readable chunks found in bag file';
+    super(message);
+    this.name = 'ReindexFailureError';
+    this.blockers = blockers;
+  }
+}
 
 // --- Binary write helpers ---
 
@@ -116,12 +167,12 @@ interface RawRecord {
 
 function readRawRecord(data: Uint8Array, offset: number): RawRecord {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  if (offset + 4 > data.length) throw new Error('Truncated record: cannot read header length');
+  if (offset + 4 > data.length) throw new TruncatedRecordError('Cannot read record header length');
   const headerLen = view.getUint32(offset, true);
-  if (offset + 4 + headerLen + 4 > data.length) throw new Error('Truncated record: cannot read data length');
+  if (offset + 4 + headerLen + 4 > data.length) throw new TruncatedRecordError('Cannot read record data length');
   const header = data.subarray(offset + 4, offset + 4 + headerLen);
   const dataLen = view.getUint32(offset + 4 + headerLen, true);
-  if (offset + 4 + headerLen + 4 + dataLen > data.length) throw new Error('Truncated record');
+  if (offset + 4 + headerLen + 4 + dataLen > data.length) throw new TruncatedRecordError('Record payload is truncated');
   const recordData = data.subarray(offset + 4 + headerLen + 4, offset + 4 + headerLen + 4 + dataLen);
   return {
     headerLen,
@@ -198,13 +249,52 @@ function timeGreaterThan(a: Time, b: Time): boolean {
   return a.sec > b.sec || (a.sec === b.sec && a.nsec > b.nsec);
 }
 
+function getErrorDetail(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
+function isZeroFilled(data: Uint8Array): boolean {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] !== 0) return false;
+  }
+  return true;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected value: ${String(value)}`);
+}
+
+function formatWarningSummary(warning: ReindexWarning): string {
+  switch (warning.code) {
+    case 'truncated-tail':
+      return `Tail truncation detected at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
+    case 'chunk-decompress-failed':
+      return `Chunk decompression failed at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
+    case 'unsupported-compression':
+      return `Unsupported compression at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
+    case 'chunk-record-corrupt':
+      return `Chunk record corruption at chunk offset ${warning.chunkOffset}: ${warning.detail}`;
+    default:
+      return assertNever(warning.code);
+  }
+}
+
 // --- Chunk scanning ---
 
 function scanChunkData(
   chunkData: Uint8Array,
-): { connections: Map<number, ConnectionData>; messageIndices: Map<number, IndexEntry[]>; startTime: Time; endTime: Time } {
+  chunkOffset: number,
+): {
+  connections: Map<number, ConnectionData>;
+  messageIndices: Map<number, IndexEntry[]>;
+  startTime: Time;
+  endTime: Time;
+  warnings: ReindexWarning[];
+} {
   const connections = new Map<number, ConnectionData>();
   const messageIndices = new Map<number, IndexEntry[]>();
+  const warnings: ReindexWarning[] = [];
   let startTime: Time = { sec: 0xffffffff, nsec: 0xffffffff };
   let endTime: Time = { sec: 0, nsec: 0 };
   let hasMessages = false;
@@ -247,8 +337,19 @@ function scanChunkData(
       }
 
       offset += record.totalLen;
-    } catch {
-      break; // truncated record
+    } catch (error) {
+      if (error instanceof TruncatedRecordError) {
+        const remaining = chunkData.subarray(offset);
+        if (remaining.length < 4 || isZeroFilled(remaining)) {
+          break;
+        }
+      }
+      warnings.push({
+        code: 'chunk-record-corrupt',
+        chunkOffset,
+        detail: `Stopped reading chunk at byte ${offset}: ${getErrorDetail(error)}`,
+      });
+      break;
     }
   }
 
@@ -257,7 +358,7 @@ function scanChunkData(
     endTime = { sec: 0, nsec: 0 };
   }
 
-  return { connections, messageIndices, startTime, endTime };
+  return { connections, messageIndices, startTime, endTime, warnings };
 }
 
 // --- Build index records ---
@@ -343,7 +444,7 @@ function buildBagHeaderRecord(indexPos: number, connCount: number, chunkCount: n
 export function reindexBagFromBuffer(
   buffer: ArrayBuffer,
   decompress: Decompress,
-): Blob {
+): ReindexResult {
   const data = new Uint8Array(buffer);
 
   // Verify preamble
@@ -365,38 +466,85 @@ export function reindexBagFromBuffer(
   let pos = PREAMBLE_LENGTH + bagHeaderRecord.totalLen;
   const chunks: ChunkScanResult[] = [];
   const allConnections = new Map<number, ConnectionData>();
+  const warnings: ReindexWarning[] = [];
+  let chunksSeen = 0;
+  let chunksRecovered = 0;
+  let chunksSkipped = 0;
+  let messagesIndexedApprox = 0;
 
   while (pos < data.length) {
+    let record: RawRecord;
     try {
-      const record = readRawRecord(data, pos);
-      const fields = extractFields(record.header);
-      const op = getOpCode(fields);
+      record = readRawRecord(data, pos);
+    } catch (error) {
+      if (!(error instanceof TruncatedRecordError)) {
+        throw error;
+      }
+      warnings.push({
+        code: 'truncated-tail',
+        chunkOffset: pos,
+        detail: `Stopped reading file at byte ${pos}: ${getErrorDetail(error)}`,
+      });
+      break;
+    }
 
-      if (op === OP_CHUNK) {
-        const compression = getStringField(fields, 'compression');
-        const size = getUint32Field(fields, 'size');
+    const fields = extractFields(record.header);
+    const op = getOpCode(fields);
 
-        let chunkData: Uint8Array;
-        if (compression === 'none' || compression === '') {
-          chunkData = record.data;
+    if (op === OP_CHUNK) {
+      chunksSeen++;
+      const chunkOffset = pos;
+      const compression = getStringField(fields, 'compression');
+      const size = getUint32Field(fields, 'size');
+
+      let chunkData: Uint8Array | null = null;
+      if (compression === 'none' || compression === '') {
+        chunkData = record.data;
+      } else {
+        const decompressFn = decompress[compression];
+        if (!decompressFn) {
+          warnings.push({
+            code: 'unsupported-compression',
+            chunkOffset,
+            compression,
+            detail: `Skipped chunk at byte ${chunkOffset}: unsupported compression "${compression}"`,
+          });
+          chunksSkipped++;
         } else {
-          const decompressFn = decompress[compression];
-          if (!decompressFn) {
-            throw new Error(`Unsupported compression: ${compression}`);
+          try {
+            chunkData = decompressFn(record.data, size);
+          } catch (error) {
+            warnings.push({
+              code: 'chunk-decompress-failed',
+              chunkOffset,
+              compression,
+              detail: `Skipped chunk at byte ${chunkOffset}: ${getErrorDetail(error)}`,
+            });
+            chunksSkipped++;
           }
-          chunkData = decompressFn(record.data, size);
         }
+      }
 
-        const scanResult = scanChunkData(chunkData);
+      if (chunkData) {
+        const scanResult = scanChunkData(chunkData, chunkOffset);
+        warnings.push(...scanResult.warnings);
+
+        let chunkMessageCount = 0;
+        for (const entries of scanResult.messageIndices.values()) {
+          chunkMessageCount += entries.length;
+        }
+        messagesIndexedApprox += chunkMessageCount;
 
         chunks.push({
-          chunkOffset: pos,
+          chunkOffset,
           chunkRawBytes: data.subarray(pos, pos + record.totalLen),
           connections: scanResult.connections,
           messageIndices: scanResult.messageIndices,
           startTime: scanResult.startTime,
           endTime: scanResult.endTime,
+          warnings: scanResult.warnings,
         });
+        chunksRecovered++;
 
         // Collect all connections
         for (const [connId, connInfo] of scanResult.connections) {
@@ -405,16 +553,14 @@ export function reindexBagFromBuffer(
           }
         }
       }
-      // Skip IndexData, ChunkInfo, Connection records at top level
-
-      pos += record.totalLen;
-    } catch {
-      break; // truncated data at end of file
     }
+    // Skip IndexData, ChunkInfo, Connection records at top level
+
+    pos += record.totalLen;
   }
 
   if (chunks.length === 0) {
-    throw new Error('No chunks found in bag file');
+    throw new ReindexFailureError(warnings);
   }
 
   // Build new file:
@@ -498,6 +644,15 @@ export function reindexBagFromBuffer(
   const finalBagHeader = buildBagHeaderRecord(indexPosition, allConnections.size, chunks.length);
   output.set(finalBagHeader, PREAMBLE_LENGTH);
 
-  return new Blob([output], { type: 'application/octet-stream' });
+  return {
+    blob: new Blob([output], { type: 'application/octet-stream' }),
+    meta: {
+      partial: warnings.length > 0 || chunksRecovered < chunksSeen,
+      warnings,
+      chunksSeen,
+      chunksRecovered,
+      chunksSkipped,
+      messagesIndexedApprox,
+    },
+  };
 }
-
